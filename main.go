@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-type vocabolary struct {
+type vocabolaryList struct {
 	Keys []string
 }
 
@@ -23,7 +23,8 @@ func main() {
 	rdfVals = make(map[string]string)
 	rdfArray = []string{}
 
-	baseUri := "http://rdfa.info/"
+	//baseUri := "http://rdfa.info/"
+	baseUri := "https://tutorialedge.net/golang/parsing-json-with-golang/"
 
 	resp, err := http.Get(baseUri)
 	if err != nil {
@@ -36,7 +37,12 @@ func main() {
 		panic(err)
 	}
 
-	var v vocabolary
+	Extract(html)
+}
+
+func Extract(html []byte) {
+
+	var vocabolary vocabolaryList
 	jsonFile, err := os.Open("./rdfvocab/vocab.json")
 	if err != nil {
 		panic(err)
@@ -47,11 +53,11 @@ func main() {
 		panic(err)
 	}
 
-	if err = json.Unmarshal(jsonByte, &v); err != nil {
+	if err = json.Unmarshal(jsonByte, &vocabolary); err != nil {
 		panic(err)
 	}
 
-	pattern := "(?i:(" + strings.Join(v.Keys, ")|(") + "))"
+	pattern := "(?i:(" + strings.Join(vocabolary.Keys, ")|(") + "))"
 	regexec := regexp.MustCompile(pattern)
 	vocabMatched := regexec.FindAllString(string(html), -1)
 	distinctedMatches := distinctObjects(vocabMatched)
@@ -92,6 +98,7 @@ func main() {
 	wg.Wait()
 	fmt.Printf("%v \n", rdfArray)
 	fmt.Printf("%v \n", rdfVals)
+
 }
 
 func regExecAndRemove(pattern string, val string, prop string, toRemove int) {
@@ -126,34 +133,32 @@ func setProperty(matches []string, html []byte) {
 }
 
 func keepThisOrNext(row string, next chan string) {
-	for i, v := range rdfArray {
-		if strings.Contains(row, v) {
+	for i, rdfProp := range rdfArray {
+		if strings.Contains(row, rdfProp) {
 			if strings.HasSuffix(row, ">") {
 				if strings.Contains(row, "content=") {
-					regExecAndRemove(`content=(.*?)"`, row, v, i)
+					regExecAndRemove(`content=(.*?)"`, row, rdfProp, i)
 					return
 				} else if strings.Contains(row, "</") {
-					regExecAndRemove(`>(.*?)</`, row, v, i)
+					regExecAndRemove(`>(.*?)</`, row, rdfProp, i)
 					return
 				}
 			}
 			for {
 				newrow := <-next
 				if strings.Contains(newrow, "content=") {
-					regExecAndRemove(`content="(.*?)"`, newrow, v, i)
+					regExecAndRemove(`content="(.*?)"`, newrow, rdfProp, i)
 					break
 				} else {
 					if strings.ContainsRune(newrow, '<') {
 						rdfArray = removeFromSlice(rdfArray, i)
 						break
 					}
-					vv := strings.Split(v, ":")[1]
-					if _, ok := rdfVals[vv]; ok {
-						rdfVals[vv] += newrow
+					splitted := strings.Split(rdfProp, ":")[1]
+					if _, ok := rdfVals[splitted]; ok {
+						rdfVals[splitted] += newrow
 					}
-
 				}
-
 			}
 		}
 	}
