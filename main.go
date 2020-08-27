@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 )
 
 type vocabolary struct {
@@ -37,7 +36,6 @@ func main() {
 		panic(err)
 	}
 
-	//regex stuff
 	var v vocabolary
 	jsonFile, err := os.Open("./rdfvocab/vocab.json")
 	if err != nil {
@@ -53,32 +51,16 @@ func main() {
 		panic(err)
 	}
 
-	p := "(?i:(" + strings.Join(v.Keys, ")|(") + "))"
-	re := regexp.MustCompile(p)
-	all := re.FindAllString(string(html), -1)
-	distincted := distinctObjects(all)
+	pattern := "(?i:(" + strings.Join(v.Keys, ")|(") + "))"
+	regexec := regexp.MustCompile(pattern)
+	vocabMatched := regexec.FindAllString(string(html), -1)
+	distinctedMatches := distinctObjects(vocabMatched)
 
-	//se non ci sono elementi nell'array -> quit
-
-	for _, single := range distincted {
-		p2 := single + `[^ ]*(\S+)(\s+)`
-		re2 := regexp.MustCompile(p2)
-		all2 := re2.FindAllString(string(html), -1)
-		for _, single2 := range all2 {
-			fmt.Println(single2)
-			p3 := `\:(.*?)[\ ,\",\t]`
-			re3 := regexp.MustCompile(p3)
-			all3 := re3.FindStringSubmatch(single2)
-			if len(all3) > 1 && all3[1] != "" {
-				//rdfVals[fmt.Sprintf("%s%s", single, all3[1])] = ""
-				if _, ok := rdfVals[all3[1]]; !ok {
-					rdfVals[all3[1]] = ""
-					rdfArray = append(rdfArray, fmt.Sprintf("%s%s", single, all3[1]))
-				}
-			}
-			fmt.Println(all3)
-		}
+	if len(distinctedMatches) == 0 {
+		panic("no key found")
 	}
+
+	setProperty(distinctedMatches, html)
 
 	wg := sync.WaitGroup{}
 	next := make(chan string)
@@ -90,7 +72,6 @@ func main() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(strings.NewReader(string(html)))
 		for scanner.Scan() {
-			time.Sleep(100 * time.Millisecond)
 			next <- scanner.Text()
 		}
 		close(eof)
@@ -100,7 +81,6 @@ func main() {
 		for {
 			select {
 			case val := <-next:
-				fmt.Println("val read: ", val)
 				keepThisOrNext(val, next)
 			case <-eof:
 				wg.Done()
@@ -114,55 +94,53 @@ func main() {
 	fmt.Printf("%v \n", rdfVals)
 }
 
+func regExecAndRemove(pattern string, val string, prop string, toRemove int) {
+	regexec := regexp.MustCompile(pattern)
+	regres := regexec.FindStringSubmatch(val)
+	if len(regres) > 1 && regres[1] != "" {
+		splitted := strings.Split(prop, ":")[1]
+		if _, ok := rdfVals[splitted]; ok {
+			rdfVals[splitted] = regres[1]
+			rdfArray = removeFromSlice(rdfArray, toRemove)
+		}
+	}
+}
+
+func setProperty(matches []string, html []byte) {
+	for _, match := range matches {
+		pattern := match + `[^ ]*(\S+)(\s+)`
+		regexec := regexp.MustCompile(pattern)
+		regres := regexec.FindAllString(string(html), -1)
+		for _, val := range regres {
+			pattern = `\:(.*?)[\ ,\",\t]`
+			regexec := regexp.MustCompile(pattern)
+			regres = regexec.FindStringSubmatch(val)
+			if len(regres) > 1 && regres[1] != "" {
+				if _, ok := rdfVals[regres[1]]; !ok {
+					rdfVals[regres[1]] = ""
+					rdfArray = append(rdfArray, fmt.Sprintf("%s%s", match, regres[1]))
+				}
+			}
+		}
+	}
+}
+
 func keepThisOrNext(row string, next chan string) {
 	for i, v := range rdfArray {
 		if strings.Contains(row, v) {
 			if strings.HasSuffix(row, ">") {
 				if strings.Contains(row, "content=") {
-					fmt.Println("Estrarre content ", row)
-					p3 := `content=(.*?)"`
-					re3 := regexp.MustCompile(p3)
-					all3 := re3.FindStringSubmatch(row)
-					if len(all3) > 1 && all3[1] != "" {
-						vv := strings.Split(v, ":")[1]
-						if _, ok := rdfVals[vv]; ok {
-							rdfVals[vv] = all3[1]
-							rdfArray = removeFromSlice(rdfArray, i)
-							return
-						}
-					}
+					regExecAndRemove(`content=(.*?)"`, row, v, i)
 					return
 				} else if strings.Contains(row, "</") {
-					fmt.Println("Estrarre regex ", row)
-					p3 := `>(.*?)</`
-					re3 := regexp.MustCompile(p3)
-					all3 := re3.FindStringSubmatch(row)
-					if len(all3) > 1 && all3[1] != "" {
-						vv := strings.Split(v, ":")[1]
-						if _, ok := rdfVals[vv]; ok {
-							rdfVals[vv] = all3[1]
-							rdfArray = removeFromSlice(rdfArray, i)
-							return
-						}
-					}
+					regExecAndRemove(`>(.*?)</`, row, v, i)
 					return
 				}
 			}
-			fmt.Println("Estrarre next row ", row)
 			for {
 				newrow := <-next
 				if strings.Contains(newrow, "content=") {
-					fmt.Println("Estrarre content ", newrow)
-					p3 := `content="(.*?)"`
-					re3 := regexp.MustCompile(p3)
-					all3 := re3.FindStringSubmatch(newrow)
-					if len(all3) > 1 && all3[1] != "" {
-						vv := strings.Split(v, ":")[1]
-						if _, ok := rdfVals[vv]; ok {
-							rdfVals[vv] = all3[1]
-							rdfArray = removeFromSlice(rdfArray, i)
-						}
-					}
+					regExecAndRemove(`content="(.*?)"`, newrow, v, i)
 					break
 				} else {
 					if strings.ContainsRune(newrow, '<') {
@@ -177,7 +155,6 @@ func keepThisOrNext(row string, next chan string) {
 				}
 
 			}
-			fmt.Println("Estrarre next row ", row)
 		}
 	}
 	return
