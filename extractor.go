@@ -1,92 +1,26 @@
-package main
+package rdfa
 
 import (
 	"bufio"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
 )
 
-type vocabolaryList struct {
-	Keys []string
-}
-
+var rdfVals (map[string]string)
 var rdfArray []string
-var rdfVals map[string]string
 
-var test = `
-<html xmlns="http://www.w3.org/1999/xhtml"
-xmlns:foaf="http://xmlns.com/foaf/0.1/"
-xmlns:dc="http://purl.org/dc/elements/1.1/"
-xhv: http://www.w3.org/1999/xhtml/vocab#
-version="XHTML+RDFa 1.0" xml:lang="en">
-  <head>
-    <title>John's Home Page</title>
-    <base href="http://example.org/john-d/" />
-    <meta property="dc:creator" content="Jonathan Doe" />
-    <link rel="foaf:primaryTopic" href="http://example.org/john-d/#me" />
-  </head>
-  <body about="http://example.org/john-d/#me">
-    <h1>John's Home Page</h1>
-    <p>My name is <span property="foaf:nick">John D</span> and I like
-      <a href="http://www.neubauten.org/" rel="foaf:interest"
-        xml:lang="de">Einstürzende Neubauten</a>.
-    </p>
-    <p>
-      My <span rel="foaf:interest" resource="urn:ISBN:0752820907">favorite
-      book is the inspiring <span about="urn:ISBN:0752820907"><cite
-      property="dc:title">Weaving the Web</cite> by
-      <span property="dc:creator">Tim Berners-Lee</span></span>
-     </span>
-    </p>
-  </body>
-</html>`
+func Extract(html []byte) error {
 
-func main() {
 	rdfVals = make(map[string]string)
 	rdfArray = []string{}
 
-	baseUri := "http://rdfa.info/"
-	//baseUri := "https://ubuntu.com/"
-
-	resp, err := http.Get(baseUri)
+	vocabolary, err := getVocabolaryType()
 	if err != nil {
-		panic(err)
+		return err
 	}
-	defer resp.Body.Close()
-
-	html, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	//html := []byte(test)
-
-	Extract(html)
-}
-
-func Extract(html []byte) {
-
-	var vocabolary vocabolaryList
-	jsonFile, err := os.Open("./rdfvocab/vocab.json")
-	if err != nil {
-		panic(err)
-	}
-	defer jsonFile.Close()
-	jsonByte, err := ioutil.ReadAll(jsonFile)
-	if err != nil {
-		panic(err)
-	}
-
-	if err = json.Unmarshal(jsonByte, &vocabolary); err != nil {
-		panic(err)
-	}
-
 	editedKeys := []string{}
 	for _, k := range vocabolary.Keys {
 		editedKeys = append(editedKeys, `:`+k)
@@ -99,7 +33,7 @@ func Extract(html []byte) {
 	distinctedMatches := distinctObjects(vocabMatched)
 
 	if len(distinctedMatches) == 0 {
-		panic("no key found")
+		return errors.New("no rdfa keys found inside the first html tag")
 	}
 
 	setProperty(distinctedMatches, html)
@@ -135,7 +69,7 @@ func Extract(html []byte) {
 	wg.Wait()
 	fmt.Printf("%v \n", rdfArray)
 	fmt.Printf("%v \n", rdfVals)
-
+	return nil
 }
 
 func htmlTagSubstring(val []byte) string {
