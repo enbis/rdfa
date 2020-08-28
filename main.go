@@ -52,7 +52,7 @@ func main() {
 	rdfArray = []string{}
 
 	baseUri := "http://rdfa.info/"
-	//baseUri := "https://www.powercms.in/blog/how-automatically-delete-docker-container-after-running-it"
+	//baseUri := "https://ubuntu.com/"
 
 	resp, err := http.Get(baseUri)
 	if err != nil {
@@ -65,7 +65,7 @@ func main() {
 		panic(err)
 	}
 
-	//html = []byte(test)
+	//html := []byte(test)
 
 	Extract(html)
 }
@@ -87,8 +87,13 @@ func Extract(html []byte) {
 		panic(err)
 	}
 
+	editedKeys := []string{}
+	for _, k := range vocabolary.Keys {
+		editedKeys = append(editedKeys, `:`+k)
+		editedKeys = append(editedKeys, k+`:`)
+	}
 	// extract keys vocab contained inside the <html> tag as a global val
-	pattern := "(?i:(" + strings.Join(vocabolary.Keys, ")|(") + "))"
+	pattern := "(?i:(" + strings.Join(editedKeys, ")|(") + "))"
 	regexec := regexp.MustCompile(pattern)
 	vocabMatched := regexec.FindAllString(htmlTagSubstring(html), -1)
 	distinctedMatches := distinctObjects(vocabMatched)
@@ -143,10 +148,9 @@ func htmlTagSubstring(val []byte) string {
 		}
 		xval := strings.TrimSpace(val)
 		if strings.HasPrefix(xval, "<html") {
-			output = val
+			output = xval
 		}
 	}
-	fmt.Println(output)
 	return output
 }
 
@@ -229,7 +233,7 @@ func distinctObjects(objs []string) (distinctedObjs []string) {
 	for _, obj := range objs {
 		if _, ok := set[obj]; !ok {
 			set[obj] = true
-			output = append(output, obj)
+			output = append(output, strings.Trim(obj, ":"))
 		}
 	}
 	fmt.Println("match found ", output)
