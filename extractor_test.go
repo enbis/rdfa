@@ -1,7 +1,7 @@
 package rdfa
 
 import (
-	"io/ioutil"
+	"bytes"
 	"net/http"
 	"testing"
 )
@@ -35,6 +35,7 @@ version="XHTML+RDFa 1.0" xml:lang="en">
 </html>`
 
 func TestExtractor(t *testing.T) {
+	var err error
 	baseUri := "http://rdfa.info/"
 	//baseUri := "https://ubuntu.com/"
 
@@ -44,16 +45,32 @@ func TestExtractor(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	html, err := ioutil.ReadAll(resp.Body)
+	_, err = Extract(resp.Body)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
-	//html := []byte(test)
-
-	err = Extract(html)
+	var a []byte
+	a, err = Extract([]byte(test))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
+	}
+
+	var b []byte
+	b, err = Extract(test)
+	if err != nil {
+		t.Error(err)
+	}
+
+	x := bytes.Compare(a, b)
+	if x != 0 {
+		t.Error("same input different responses")
+	}
+
+	expected := "input value type not allowed"
+	_, err = Extract(1)
+	if err.Error() != expected {
+		t.Error("error")
 	}
 
 }

@@ -2,8 +2,12 @@ package rdfa
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -12,14 +16,50 @@ import (
 var rdfVals (map[string]string)
 var rdfArray []string
 
-func Extract(html []byte) error {
+func Extract(i interface{}) ([]byte, error) {
+	var res []byte
+	var err error
+	switch reflect.ValueOf(i).Interface().(type) {
+	case []byte:
+		b, ok := i.([]byte)
+		if !ok {
+			err = errors.New("unable to execute interface conversion")
+			break
+		}
+		res, err = runExtraction(b)
+	case string:
+		s, ok := i.(string)
+		if !ok {
+			err = errors.New("unable to execute interface conversion")
+			break
+		}
+		res, err = runExtraction([]byte(s))
+	case io.Reader:
+		ioR, ok := i.(io.Reader)
+		if !ok {
+			err = errors.New("unable to execute interface conversion")
+			break
+		}
+		r, errR := ioutil.ReadAll(ioR)
+		if errR != nil {
+			err = errR
+			break
+		}
+		res, err = runExtraction(r)
+	default:
+		err = errors.New("input value type not allowed")
+	}
+	return res, err
+}
+
+func runExtraction(html []byte) ([]byte, error) {
 
 	rdfVals = make(map[string]string)
 	rdfArray = []string{}
 
 	vocabolary, err := getVocabolaryType()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	editedKeys := []string{}
 	for _, k := range vocabolary.Keys {
@@ -33,7 +73,7 @@ func Extract(html []byte) error {
 	distinctedMatches := distinctObjects(vocabMatched)
 
 	if len(distinctedMatches) == 0 {
-		return errors.New("no rdfa keys found inside the first html tag")
+		return nil, errors.New("no rdfa keys found inside the first html tag")
 	}
 
 	setProperty(distinctedMatches, html)
@@ -57,7 +97,6 @@ func Extract(html []byte) error {
 		for {
 			select {
 			case val := <-next:
-				fmt.Println("read text ", val)
 				keepThisOrNext(val, next)
 			case <-eof:
 				wg.Done()
@@ -67,9 +106,14 @@ func Extract(html []byte) error {
 	}()
 
 	wg.Wait()
-	fmt.Printf("%v \n", rdfArray)
-	fmt.Printf("%v \n", rdfVals)
-	return nil
+
+	res, err := json.Marshal(rdfVals)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func htmlTagSubstring(val []byte) string {
@@ -170,6 +214,5 @@ func distinctObjects(objs []string) (distinctedObjs []string) {
 			output = append(output, strings.Trim(obj, ":"))
 		}
 	}
-	fmt.Println("match found ", output)
 	return output
 }
