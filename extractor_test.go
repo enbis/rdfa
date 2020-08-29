@@ -37,7 +37,6 @@ version="XHTML+RDFa 1.0" xml:lang="en">
 func TestExtractor(t *testing.T) {
 	var err error
 	baseUri := "http://rdfa.info/"
-	//baseUri := "https://ubuntu.com/"
 
 	resp, err := http.Get(baseUri)
 	if err != nil {
