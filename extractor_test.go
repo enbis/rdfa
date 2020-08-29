@@ -6,11 +6,10 @@ import (
 	"testing"
 )
 
-var test = `
+var xhtmlInput = `
 <html xmlns="http://www.w3.org/1999/xhtml"
 xmlns:foaf="http://xmlns.com/foaf/0.1/"
 xmlns:dc="http://purl.org/dc/elements/1.1/"
-xhv: http://www.w3.org/1999/xhtml/vocab#
 version="XHTML+RDFa 1.0" xml:lang="en">
   <head>
     <title>John's Home Page</title>
@@ -34,7 +33,31 @@ version="XHTML+RDFa 1.0" xml:lang="en">
   </body>
 </html>`
 
-func TestExtractor(t *testing.T) {
+var html5Input = `
+<html prefix="dc: http://purl.org/dc/elements/1.1/ foaf: http://xmlns.com/foaf/0.1/" lang="en">
+<head>
+  <title>John's Home Page</title>
+  <link rel="profile" href="http://www.w3.org/1999/xhtml/vocab" />
+  <base href="http://example.org/john-d/" />
+  <meta property="dc:creator" content="Jonathan Doe" />
+  <link rel="foaf:primaryTopic" href="http://example.org/john-d/#me" />
+</head>
+<body about="http://example.org/john-d/#me">
+  <h1>John's Home Page</h1>
+  <p>My name is <span property="foaf:nick">John D</span> and I like
+	<a href="http://www.neubauten.org/" rel="foaf:interest"
+	  lang="de">Einstürzende Neubauten</a>.
+  </p>
+  <p>
+	My <span rel="foaf:interest" resource="urn:ISBN:0752820907">favorite
+	book is the inspiring <span about="urn:ISBN:0752820907"><cite
+	property="dc:title">Weaving the Web</cite> by
+	<span property="dc:creator">Tim Berners-Lee</span></span></span>.
+  </p>
+</body>
+</html>`
+
+func TestReader(t *testing.T) {
 	var err error
 	baseUri := "http://rdfa.info/"
 
@@ -49,14 +72,18 @@ func TestExtractor(t *testing.T) {
 		t.Error(err)
 	}
 
-	var a []byte
-	a, err = Extract([]byte(test))
+}
+
+func TestStringAndByte(t *testing.T) {
+	var a, b []byte
+	var err error
+
+	a, err = Extract([]byte(xhtmlInput))
 	if err != nil {
 		t.Error(err)
 	}
 
-	var b []byte
-	b, err = Extract(test)
+	b, err = Extract(xhtmlInput)
 	if err != nil {
 		t.Error(err)
 	}
@@ -65,11 +92,29 @@ func TestExtractor(t *testing.T) {
 	if x != 0 {
 		t.Error("same input different responses")
 	}
+}
 
+func TestDifferentType(t *testing.T) {
 	expected := "input value type not allowed"
+	var err error
+
 	_, err = Extract(1)
 	if err.Error() != expected {
 		t.Error("error")
 	}
+}
 
+func TestFormats(t *testing.T) {
+	a, err := Extract(html5Input)
+	if err != nil {
+		t.Error(err)
+	}
+	b, err := Extract(html5Input)
+	if err != nil {
+		t.Error(err)
+	}
+	x := bytes.Compare(a, b)
+	if x != 0 {
+		t.Error("different responses")
+	}
 }
