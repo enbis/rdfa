@@ -2,6 +2,7 @@ package rdfa
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -32,6 +33,8 @@ version="XHTML+RDFa 1.0" xml:lang="en">
     </p>
   </body>
 </html>`
+
+var xhtmlInputOneLine = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:dc="http://purl.org/dc/elements/1.1/" version="XHTML+RDFa 1.0" xml:lang="en"> <head> <title>John's Home Page</title> <base href="http://example.org/john-d/" /> <meta property="dc:creator" content="Jonathan Doe" /> <link rel="foaf:primaryTopic" href="http://example.org/john-d/#me" /> </head> <body about="http://example.org/john-d/#me"> <h1>John's Home Page</h1> <p>My name is <span property="foaf:nick">John D</span> and I like <a href="http://www.neubauten.org/" rel="foaf:interest" xml:lang="de">Einstürzende Neubauten</a>. </p> </body> </html>`
 
 var html5Input = `
 <html prefix="dc: http://purl.org/dc/elements/1.1/ foaf: http://xmlns.com/foaf/0.1/" lang="en">
@@ -67,10 +70,12 @@ func TestReader(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	_, err = Extract(resp.Body)
+	a, err := Extract(resp.Body)
 	if err != nil {
 		t.Error(err)
 	}
+
+	fmt.Println("TestReader ", string(a))
 
 }
 
@@ -92,6 +97,22 @@ func TestStringAndByte(t *testing.T) {
 	if x != 0 {
 		t.Error("same input different responses")
 	}
+
+	fmt.Println("TestStringAndByte ", string(a))
+	fmt.Println("TestStringAndByte ", string(b))
+
+}
+
+func TestMinimizedHtml(t *testing.T) {
+	var a []byte
+	var err error
+
+	a, err = Extract([]byte(xhtmlInputOneLine))
+	if err != nil {
+		t.Error(err)
+	}
+
+	fmt.Println("TestMinimizedHtml ", string(a))
 }
 
 func TestDifferentType(t *testing.T) {
@@ -117,4 +138,7 @@ func TestFormats(t *testing.T) {
 	if x != 0 {
 		t.Error("different responses")
 	}
+
+	fmt.Println("TestFormats ", string(a))
+	fmt.Println("TestFormats ", string(b))
 }
