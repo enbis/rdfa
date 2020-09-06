@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 )
 
-type vocabolaryList struct {
+type vocabularyList struct {
 	Keys []string
 }
 
-func getVocabolaryType() (vocabolaryList, error) {
-	var vocabolary vocabolaryList
+func getVocabularyType() (vocabularyList, error) {
+	var vocabolary vocabularyList
 
 	if err := json.Unmarshal([]byte(jsonFile), &vocabolary); err != nil {
 		return vocabolary, err

@@ -1,23 +1,24 @@
 package rdfa
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"reflect"
 	"regexp"
 	"strings"
-	"sync"
 
 	"golang.org/x/net/html"
 )
 
-var rdfVals (map[string]string)
-var rdfArray []string
+type rdfData struct {
+	rdfVals    map[string]string
+	rdfArray   []string
+	vocabulary vocabularyList
+	editedKeys []string
+}
 
 func Extract(i interface{}) ([]byte, error) {
 	var res []byte
@@ -57,73 +58,59 @@ func Extract(i interface{}) ([]byte, error) {
 
 func runExtraction(htmlInput []byte) ([]byte, error) {
 
-	rdfVals = make(map[string]string)
-	rdfArray = []string{}
+	var err error
 
-	vocabolary, err := getVocabolaryType()
+	rdfCollection := rdfData{}
+	rdfCollection.rdfVals = make(map[string]string)
+	rdfCollection.rdfArray = []string{}
+	rdfCollection.editedKeys = []string{}
+
+	v, err := getVocabularyType()
 	if err != nil {
 		return nil, err
 	}
-	editedKeys := []string{}
-	for _, k := range vocabolary.Keys {
-		editedKeys = append(editedKeys, `:`+k)
-		editedKeys = append(editedKeys, k+`:`)
-	}
-	// extract keys vocab contained inside the <html> tag as a global val
-	pattern := "(?i:(" + strings.Join(editedKeys, ")|(") + "))"
-	regexec := regexp.MustCompile(pattern)
-	vocabMatched := regexec.FindAllString(htmlTagSubstring(htmlInput), -1)
-	distinctedMatches := distinctObjects(vocabMatched)
+	rdfCollection.vocabulary = v
 
-	if len(distinctedMatches) == 0 {
-		return nil, errors.New("no rdfa keys found inside the first html tag")
+	for _, k := range rdfCollection.vocabulary.Keys {
+		rdfCollection.editedKeys = append(rdfCollection.editedKeys, `:`+k)
+		rdfCollection.editedKeys = append(rdfCollection.editedKeys, k+`:`)
 	}
 
-	setProperty(distinctedMatches, htmlInput)
+	doc, _ := html.Parse(bytes.NewReader(htmlInput))
+	nodes := []*html.Node{doc}
+	for len(nodes) != 0 {
+		node := nodes[0]
+		if node.Type == html.ElementNode && node.Data == "html" {
 
-	wg := sync.WaitGroup{}
-	next := make(chan *html.Node)
-	eof := make(chan bool)
+			var b bytes.Buffer
+			html.Render(&b, node)
+			htmlTag := b.String()
 
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-
-		doc, _ := html.Parse(bytes.NewReader(htmlInput))
-		var f func(*html.Node)
-		f = func(n *html.Node) {
-			if n.Type == html.ElementNode {
-				for _, a := range n.Attr {
-					if a.Key == "property" {
-						next <- n
-					}
-				}
-			}
-			for c := n.FirstChild; c != nil; c = c.NextSibling {
-				f(c)
+			if err := runVocabularyExtraction(htmlTag, &rdfCollection); err != nil {
+				return nil, err
 			}
 		}
-		f(doc)
-
-		close(eof)
-	}()
-
-	go func() {
-		for {
-			select {
-			case val := <-next:
-				processNode(val)
-			case <-eof:
-				wg.Done()
-				return
+		for _, a := range node.Attr {
+			// attributes rel, revand property are used to represent predicates
+			switch a.Key {
+			case "property":
+				//read content or data
+				preProcessNode(node, &rdfCollection, "content", a.Val)
+			case "rel":
+				//read href or data
+				preProcessNode(node, &rdfCollection, "href", a.Val)
+			case "ref":
+				//read about or data
+				preProcessNode(node, &rdfCollection, "about", a.Val)
 			}
 		}
-	}()
+		for n := node.FirstChild; n != nil; n = n.NextSibling {
+			nodes = append(nodes, n)
+		}
+		nodes = nodes[1:]
+	}
 
-	wg.Wait()
-
-	res, err := json.Marshal(rdfVals)
+	res, err := json.Marshal(rdfCollection.rdfVals)
 
 	if err != nil {
 		return nil, err
@@ -132,106 +119,65 @@ func runExtraction(htmlInput []byte) ([]byte, error) {
 	return res, nil
 }
 
-func renderHtmlNode(n *html.Node) string {
-	var b bytes.Buffer
-	html.Render(&b, n)
-	return b.String()
-}
+func runVocabularyExtraction(htmlTag string, rdfCollection *rdfData) error {
 
-func htmlTagSubstring(val []byte) string {
-	output := ""
-	in := bufio.NewReader(strings.NewReader(string(val)))
-	for output == "" {
-		val, err := in.ReadString('>')
-		if err != nil {
-			panic(err)
-		}
-		xval := strings.TrimSpace(val)
-		if strings.HasPrefix(xval, "<html") {
-			output = xval
-		}
+	pos := strings.Index(htmlTag, ">")
+	if pos == -1 {
+		return errors.New("html tag extraction error")
 	}
-	return output
-}
+	htmlTag = htmlTag[0:pos]
+	pattern := "(?i:(" + strings.Join(rdfCollection.editedKeys, ")|(") + "))"
+	regexec := regexp.MustCompile(pattern)
+	vocabMatched := regexec.FindAllString(htmlTag, -1)
+	distinctedMatches := distinctObjects(vocabMatched)
 
-func setAndRemove(val string, prop string, toRemove int) {
-
-	splitted := strings.Split(prop, ":")[1]
-	if _, ok := rdfVals[splitted]; ok {
-		rdfVals[splitted] = val
-		rdfArray = removeFromSlice(rdfArray, toRemove)
+	if len(distinctedMatches) == 0 {
+		return errors.New("No keys found")
 	}
+
+	rdfCollection.editedKeys = distinctedMatches
+
+	return nil
 }
 
-func setProperty(matches []string, html []byte) {
-	for _, match := range matches {
-		pattern := `property="` + match + `[^ ]*(\S+)(\s+)`
-		regexec := regexp.MustCompile(pattern)
-		regres := regexec.FindAllString(string(html), -1)
-		for _, val := range regres {
-			pattern = `\:(.*?)[\ ,\",\t]`
-			regexec := regexp.MustCompile(pattern)
-			regres = regexec.FindStringSubmatch(val)
-			if len(regres) > 1 && regres[1] != "" {
-				if _, ok := rdfVals[regres[1]]; !ok {
-					rdfVals[regres[1]] = ""
-					rdfArray = append(rdfArray, fmt.Sprintf("%s:%s", match, regres[1]))
-				}
-			}
+func preProcessNode(node *html.Node, rdfColl *rdfData, attribute string, val string) {
+
+	if strings.Count(val, ":") > 1 {
+		splitted := strings.Split(val, " ")
+		for _, s := range splitted {
+			processNode(node, rdfColl, attribute, s)
 		}
+	} else {
+		processNode(node, rdfColl, attribute, val)
 	}
+
 }
 
-func processNode(node *html.Node) {
+func processNode(node *html.Node, rdfColl *rdfData, attribute string, val string) {
 
-	row := renderHtmlNode(node)
-	content := ""
+	attributeVal := ""
 	for _, a := range node.Attr {
-		if a.Key == "content" {
-			content = a.Val
+		if a.Key == attribute {
+			attributeVal = a.Val
 		}
 	}
 
-	for i, rdfProp := range rdfArray {
-		if strings.Contains(row, rdfProp) {
-			if content != "" {
-				setAndRemove(content, rdfProp, i)
-				return
-			} else {
-				text := &bytes.Buffer{}
-				collectText(node, text)
-				setAndRemove(text.String(), rdfProp, i)
-				return
-			}
+	splitted := strings.Split(val, ":")
+	if len(splitted) != 2 || splitted[0] == "" || splitted[1] == "" {
+		return
+	}
+	splittedVal := splitted[0]
+	splittedKey := splitted[1]
+
+	if contains(rdfColl.rdfArray, splittedVal) {
+		if attributeVal != "" {
+			addKeyAndValue(splittedKey, attributeVal, rdfColl)
+			return
+		} else {
+			text := &bytes.Buffer{}
+			collectText(node, text)
+			addKeyAndValue(splittedKey, text.String(), rdfColl)
+			return
 		}
 	}
-}
-
-func collectText(n *html.Node, buf *bytes.Buffer) {
-	if n.Type == html.TextNode {
-		buf.WriteString(n.Data)
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		collectText(c, buf)
-	}
-}
-
-func removeFromSlice(s []string, i int) []string {
-	if len(s)-1 < i {
-		panic("error length ")
-	}
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
-}
-
-func distinctObjects(objs []string) (distinctedObjs []string) {
-	var output []string
-	set := make(map[string]bool)
-	for _, obj := range objs {
-		if _, ok := set[obj]; !ok {
-			set[obj] = true
-			output = append(output, strings.Trim(obj, ":"))
-		}
-	}
-	return output
 }
