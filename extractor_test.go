@@ -60,6 +60,28 @@ var html5Input = `
 </body>
 </html>`
 
+var newRef = `<html xmlns:dc="http://purl.org/dc/terms/">
+<head>
+ <title>RDFa: Now everyone can have an API</title>
+</head>
+<body>
+ <h1>RDFa: Now everyone can have an API</h1>
+ Author: <em property="dc:creator" content="Mark Birbeck">
+   Mark Birbeck</em>
+
+ Created: <em property="dc:created" content="2009-05-09">
+   May 9th, 2009</em>
+
+ License: <a rel="license" href="http://creativecommons.org/licenses/ » 
+by-sa/3.0/">
+   CC Attribution-ShareAlike</a>
+
+ Previous version: <a rel="dc:replaces" href="rdfa.0.8.html">
+   version 0.8</a>
+
+</body>
+</html>`
+
 func TestReader(t *testing.T) {
 	var err error
 	baseUri := "http://rdfa.info/"
@@ -141,4 +163,13 @@ func TestFormats(t *testing.T) {
 
 	fmt.Println("TestFormats ", string(a))
 	fmt.Println("TestFormats ", string(b))
+}
+
+func TestNewRef(t *testing.T) {
+	a, err := Extract(newRef)
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Logf("TestReader %s", string(a))
 }

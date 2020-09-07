@@ -135,7 +135,7 @@ func runVocabularyExtraction(htmlTag string, rdfCollection *rdfData) error {
 		return errors.New("No keys found")
 	}
 
-	rdfCollection.editedKeys = distinctedMatches
+	rdfCollection.rdfArray = distinctedMatches
 
 	return nil
 }
