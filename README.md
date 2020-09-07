@@ -12,5 +12,8 @@ The extraction of information has some limitations compared to the RDFa protocol
 
 ## changelog
 
+### v0.0.5
+RDFa algorithm bug fixed
+
 ### v0.0.4 
 Improved the data extraction process, now based on tag by tag html code's reading instead of line by line string.
